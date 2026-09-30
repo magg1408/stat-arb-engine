@@ -1,24 +1,42 @@
-import pandas as pd 
+import pandas as pd
 from events import SignalEvent, OrderEvent, FillEvent
 
 class Portfolio:
-    """Handles position sizing, order generation from signals, and portfolio equity/cash tracking with performance history."""
-    def __init__(self, events_queue, initial_capital=100000.0, allocation_per_trade=20000.0):
+    """
+    Handles position sizing, order generation, cash accounting, 
+    and transaction friction (commissions, slippage, borrow fees).
+    """
+    def __init__(self, events_queue, initial_capital=100000.0, allocation_per_trade=20000.0, short_borrow_rate=0.015):
         self.events_queue = events_queue
         self.initial_capital = initial_capital
         self.current_cash = initial_capital
         self.allocation_per_trade = allocation_per_trade
-
+        self.short_borrow_rate = short_borrow_rate  # Annualized borrow rate (1.5%)
+        
         self.positions = {'KO': 0, 'PEP': 0}
         self.latest_prices = {'KO': 0.0, 'PEP': 0.0}
         
-        # History log for performance tracking
+        # Friction tracking
+        self.total_commissions = 0.0
+        self.total_slippage = 0.0
+        self.total_borrow_fees = 0.0
+        
         self.equity_curve = []
 
     def update_market_price(self, market_event):
-        """Updates internal price cache and logs daily portfolio value."""
+        """Updates internal price cache, deducts daily borrow fees, and logs daily equity."""
         for symbol in market_event.data:
             self.latest_prices[symbol] = market_event.data[symbol]['close']
+
+        # Deduct daily short borrow cost on any short positions held overnight
+        daily_borrow_cost = 0.0
+        for sym, qty in self.positions.items():
+            if qty < 0:  # Short position
+                short_val = abs(qty) * self.latest_prices[sym]
+                daily_borrow_cost += short_val * (self.short_borrow_rate / 365.0)
+
+        self.current_cash -= daily_borrow_cost
+        self.total_borrow_fees += daily_borrow_cost
 
         # Record daily equity snapshot
         current_val = self.total_equity()
@@ -58,13 +76,18 @@ class Portfolio:
                 self.events_queue.put(OrderEvent(signal.timestamp, stock_b, dir_b, abs(self.positions[stock_b])))
 
     def update_fill(self, fill: FillEvent):
-        """Updates cash and position counts upon filled order."""
+        """Updates cash, position counts, and transaction cost logs."""
+        trade_val = fill.quantity * fill.fill_cost
+        
         if fill.direction == "BUY":
             self.positions[fill.symbol] += fill.quantity
-            self.current_cash -= (fill.quantity * fill.fill_cost)
+            self.current_cash -= (trade_val + fill.commission)
         elif fill.direction == "SELL":
             self.positions[fill.symbol] -= fill.quantity
-            self.current_cash += (fill.quantity * fill.fill_cost)
+            self.current_cash += (trade_val - fill.commission)
+
+        self.total_commissions += fill.commission
+        self.total_slippage += fill.slippage
 
     def total_equity(self) -> float:
         """Calculates total portfolio equity."""

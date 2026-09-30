@@ -9,12 +9,13 @@ def run_backtest():
     events = Queue()
     symbol_list = ["KO", "PEP"]
     
+    # Initialize Engine Components
     data_handler = HistoricDataHandler(events, symbol_list, "2023-01-01", "2024-01-01")
     strategy = PairsStatArbStrategy(events, pair=('KO', 'PEP'), window=30)
     portfolio = Portfolio(events, initial_capital=100000.0)
     execution = SimulatedExecutionHandler(events)
 
-    print("\n--- Running Event-Driven Backtest (KO vs PEP) ---\n")
+    print("\n--- Running Stat-Arb Backtest with Transaction Friction ---\n")
 
     while data_handler.stream_next_bar():
         while not events.empty():
@@ -34,16 +35,22 @@ def run_backtest():
             elif event.type == "FILL":
                 portfolio.update_fill(event)
 
+    # Performance Analysis
     equity_df = portfolio.get_equity_df()
     metrics = calculate_performance_metrics(equity_df)
     plot_equity_curve(equity_df)
 
     print("\n================ STATISTICAL PERFORMANCE METRICS ================")
-    print(f"Starting Capital : ${portfolio.initial_capital:,.2f}")
-    print(f"Ending Equity    : ${equity_df['equity'].iloc[-1]:,.2f}")
-    print(f"Total Return     : {metrics['Total Return (%)']:.2f}%")
-    print(f"Sharpe Ratio     : {metrics['Sharpe Ratio']:.2f}")
-    print(f"Max Drawdown     : {metrics['Max Drawdown (%)']:.2f}%")
+    print(f"Starting Capital   : ${portfolio.initial_capital:,.2f}")
+    print(f"Ending Equity      : ${equity_df['equity'].iloc[-1]:,.2f}")
+    print(f"Total Return       : {metrics['Total Return (%)']:.2f}%")
+    print(f"Sharpe Ratio       : {metrics['Sharpe Ratio']:.2f}")
+    print(f"Max Drawdown       : {metrics['Max Drawdown (%)']:.2f}%")
+    print("---------------- TRANSACTION COST BREAKDOWN ----------------")
+    print(f"Total Commissions  : ${portfolio.total_commissions:,.2f}")
+    print(f"Total Slippage     : ${portfolio.total_slippage:,.2f}")
+    print(f"Total Borrow Fees  : ${portfolio.total_borrow_fees:,.2f}")
+    print(f"Gross Friction Impact: ${portfolio.total_commissions + portfolio.total_slippage + portfolio.total_borrow_fees:,.2f}")
     print("=================================================================")
 
 if __name__ == "__main__":
