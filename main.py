@@ -7,15 +7,18 @@ from analytics import calculate_performance_metrics, plot_equity_curve
 
 def run_backtest():
     events = Queue()
-    symbol_list = ["KO", "PEP"]
+    
+    # Switch to the top cointegrated pair from screener: XOM / CVX
+    symbol_list = ["XOM", "CVX"]
+    pair = ('XOM', 'CVX')
     
     # Initialize Engine Components
     data_handler = HistoricDataHandler(events, symbol_list, "2023-01-01", "2024-01-01")
-    strategy = PairsStatArbStrategy(events, pair=('KO', 'PEP'))
+    strategy = PairsStatArbStrategy(events, pair=pair)
     portfolio = Portfolio(events, initial_capital=100000.0)
     execution = SimulatedExecutionHandler(events)
 
-    print("\n--- Running Dynamic OLS Hedge Ratio Stat-Arb Backtest ---\n")
+    print(f"\n--- Running Kalman Filter Stat-Arb Backtest on {pair[0]}/{pair[1]} ---\n")
 
     while data_handler.stream_next_bar():
         while not events.empty():
@@ -41,6 +44,7 @@ def run_backtest():
     plot_equity_curve(equity_df)
 
     print("\n================ STATISTICAL PERFORMANCE METRICS ================")
+    print(f"Target Pair        : {pair[0]} / {pair[1]}")
     print(f"Starting Capital   : ${portfolio.initial_capital:,.2f}")
     print(f"Ending Equity      : ${equity_df['equity'].iloc[-1]:,.2f}")
     print(f"Total Return       : {metrics['Total Return (%)']:.2f}%")

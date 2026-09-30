@@ -13,8 +13,9 @@ class Portfolio:
         self.allocation_per_trade = allocation_per_trade
         self.short_borrow_rate = short_borrow_rate  # Annualized borrow rate (1.5%)
         
-        self.positions = {'KO': 0, 'PEP': 0}
-        self.latest_prices = {'KO': 0.0, 'PEP': 0.0}
+        # Initialize positions dynamically
+        self.positions = {}
+        self.latest_prices = {}
         
         # Friction tracking
         self.total_commissions = 0.0
@@ -32,6 +33,8 @@ class Portfolio:
         """Updates internal price cache, deducts daily borrow fees, and logs daily equity."""
         for symbol in market_event.data:
             self.latest_prices[symbol] = market_event.data[symbol]['close']
+            if symbol not in self.positions:
+                self.positions[symbol] = 0
 
         # Deduct daily short borrow cost on any short positions held overnight
         daily_borrow_cost = 0.0
