@@ -11,7 +11,7 @@ def run_backtest():
     
     # Initialize Engine Components
     data_handler = HistoricDataHandler(events, symbol_list, "2023-01-01", "2024-01-01")
-    strategy = PairsStatArbStrategy(events, pair=('KO', 'PEP'), window=30)
+    strategy = PairsStatArbStrategy(events, pair=('KO', 'PEP'))
     portfolio = Portfolio(events, initial_capital=100000.0)
     execution = SimulatedExecutionHandler(events)
 

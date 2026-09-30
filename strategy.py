@@ -1,58 +1,47 @@
 import numpy as np
-import scipy.stats as stats
 from events import SignalEvent
+from kalman import KalmanHedgeFilter
 
 class PairsStatArbStrategy:
     """
-    Rolling OLS Dynamic Hedge Ratio Pairs Trading Strategy.
-    Calculates dynamic beta, spread, and rolling Z-score.
+    Kalman Filter Dynamic Hedge Ratio Pairs Strategy.
+    Continuously updates state space estimates for alpha, beta, and spread Z-score.
     """
-    def __init__(self, events_queue, pair=('KO', 'PEP'), window=30, entry_z=2.0, exit_z=0.5):
+    def __init__(self, events_queue, pair=('KO', 'PEP'), entry_z=2.0, exit_z=0.5):
         self.events_queue = events_queue
         self.pair = pair
-        self.window = window
         self.entry_z = entry_z
         self.exit_z = exit_z
 
-        self.price_history = {pair[0]: [], pair[1]: []}
-        self.history_timestamps = []
+        self.kalman = KalmanHedgeFilter(delta=1e-4, R=1e-3)
+        self.price_cache = {pair[0]: None, pair[1]: None}
         
         self.in_position = False
-        self.position_type = None  # 'LONG_PAIR' or 'SHORT_PAIR'
+        self.position_type = None
         self.current_beta = 1.0
 
     def calculate_signals(self, market_event):
-        """Processes market data, calculates dynamic beta & spread Z-score, emits signals."""
+        """Updates Kalman Filter state on new price data and emits signals."""
         for sym in self.pair:
             if sym in market_event.data:
-                self.price_history[sym].append(market_event.data[sym]['close'])
-        
-        self.history_timestamps.append(market_event.timestamp)
+                self.price_cache[sym] = market_event.data[sym]['close']
 
-        # Wait until we have enough lookback data
-        if len(self.price_history[self.pair[0]]) < self.window:
+        # Ensure both stock prices are loaded
+        if self.price_cache[self.pair[0]] is None or self.price_cache[self.pair[1]] is None:
             return
 
-        # Slice rolling window
-        prices_a = np.array(self.price_history[self.pair[0]][-self.window:])
-        prices_b = np.array(self.price_history[self.pair[1]][-self.window:])
+        price_a = self.price_cache[self.pair[0]]
+        price_b = self.price_cache[self.pair[1]]
 
-        # 1. Rolling OLS Regression: Price_A = alpha + beta * Price_B
-        slope, intercept, _, _, _ = stats.linregress(prices_b, prices_a)
-        self.current_beta = slope
+        # Update Kalman Filter
+        alpha, beta, spread, spread_std = self.kalman.update(price_a, price_b)
+        self.current_beta = beta
 
-        # 2. Compute Rolling Spread Series
-        spread_series = prices_a - (self.current_beta * prices_b)
-        current_spread = spread_series[-1]
-
-        # 3. Calculate Spread Rolling Mean & Std Dev
-        mean_spread = np.mean(spread_series)
-        std_spread = np.std(spread_series)
-
-        if std_spread == 0:
+        if spread_std == 0:
             return
 
-        z_score = (current_spread - mean_spread) / std_spread
+        # Kalman Standardized Residual (Z-score)
+        z_score = spread / spread_std
         timestamp = market_event.timestamp
 
         # Signal Logic
@@ -68,7 +57,6 @@ class PairsStatArbStrategy:
                 self.events_queue.put(SignalEvent(timestamp, self.pair, 'SHORT_PAIR', z_score))
 
         else:
-            # Exit on Mean Reversion
             if abs(z_score) < self.exit_z:
                 self.in_position = False
                 self.position_type = None
