@@ -1,60 +1,46 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
-def calculate_performance_metrics(equity_df: pd.DataFrame, risk_free_rate=0.02):
-    """
-    Calculates Sharpe Ratio, Max Drawdown, and Total Return from equity history.
-    """
-    equity_df['returns'] = equity_df['equity'].pct_change().dropna()
+def calculate_performance_metrics(equity_df: pd.DataFrame) -> dict:
+    returns = equity_df['equity'].pct_change().dropna()
     
-    # 1. Total Return
-    total_return = (equity_df['equity'].iloc[-1] - equity_df['equity'].iloc[0]) / equity_df['equity'].iloc[0]
+    total_return = ((equity_df['equity'].iloc[-1] - equity_df['equity'].iloc[0]) / equity_df['equity'].iloc[0]) * 100
     
-    # 2. Annualized Sharpe Ratio (assuming 252 trading days)
-    daily_rf = risk_free_rate / 252.0
-    excess_returns = equity_df['returns'] - daily_rf
-    sharpe_ratio = np.sqrt(252) * (excess_returns.mean() / excess_returns.std()) if excess_returns.std() != 0 else 0.0
+    # Calculate Sharpe Ratio with zero-std protection
+    if len(returns) == 0 or returns.std() == 0:
+        sharpe_ratio = 0.0
+    else:
+        sharpe_ratio = (returns.mean() / returns.std()) * np.sqrt(252)
 
-    # 3. Maximum Drawdown Calculation
-    equity_df['cum_max'] = equity_df['equity'].cummax()
-    equity_df['drawdown'] = (equity_df['equity'] - equity_df['cum_max']) / equity_df['cum_max']
-    max_drawdown = equity_df['drawdown'].min()
+    # Max Drawdown
+    rolling_max = equity_df['equity'].cummax()
+    drawdown = (equity_df['equity'] - rolling_max) / rolling_max
+    max_drawdown = drawdown.min() * 100
 
     return {
-        "Total Return (%)": total_return * 100,
+        "Total Return (%)": total_return,
         "Sharpe Ratio": sharpe_ratio,
-        "Max Drawdown (%)": max_drawdown * 100
+        "Max Drawdown (%)": max_drawdown
     }
 
-def plot_equity_curve(equity_df: pd.DataFrame, output_file="equity_curve.png"):
-    """Saves formatted equity curve visualization to disk."""
-    df = equity_df.copy()
-    df.index = pd.to_datetime(df.index)  # Convert string timestamps to datetime
-
-    plt.style.use('seaborn-v0_8-darkgrid' if 'seaborn-v0_8-darkgrid' in plt.style.available else 'default')
+def plot_equity_curve(equity_df: pd.DataFrame, filename: str = "equity_curve.png"):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-
-    # Equity Curve
-    ax1.plot(df.index, df['equity'], label="Statistical Arbitrage Portfolio", color='#1f77b4', linewidth=1.5)
-    ax1.set_title("Pairs Trading Strategy: Cumulative Performance (KO / PEP)", fontsize=12, fontweight='bold')
+    
+    ax1.plot(equity_df.index, equity_df['equity'], label="Statistical Arbitrage Portfolio", color='#1f77b4', linewidth=1.5)
+    ax1.set_title("Pairs Trading Strategy: Cumulative Performance (KO / PEP)")
     ax1.set_ylabel("Portfolio Value ($)")
     ax1.legend(loc="upper left")
+    ax1.grid(True, linestyle='--', alpha=0.5)
 
-    # Drawdown Chart
-    df['cum_max'] = df['equity'].cummax()
-    drawdown = (df['equity'] - df['cum_max']) / df['cum_max'] * 100
-    ax2.fill_between(df.index, drawdown, 0, color='red', alpha=0.3, label="Drawdown (%)")
+    rolling_max = equity_df['equity'].cummax()
+    drawdown = (equity_df['equity'] - rolling_max) / rolling_max * 100
+    ax2.fill_between(equity_df.index, drawdown, 0, color='#e74c3c', alpha=0.4, label="Drawdown (%)")
     ax2.set_ylabel("Drawdown (%)")
     ax2.set_xlabel("Date")
     ax2.legend(loc="lower left")
-
-    # Format X-Axis Dates cleanly
-    ax2.xaxis.set_major_locator(mdates.MonthLocator(interval=2))
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
-    fig.autofmt_xdate()
+    ax2.grid(True, linestyle='--', alpha=0.5)
 
     plt.tight_layout()
-    plt.savefig(output_file, dpi=300)
-    print(f"\n[Analytics] Formatted equity curve saved as '{output_file}'")
+    plt.savefig(filename)
+    plt.close()
