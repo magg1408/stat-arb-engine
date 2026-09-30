@@ -23,6 +23,11 @@ class Portfolio:
         
         self.equity_curve = []
 
+    def total_equity(self) -> float:
+        """Calculates total portfolio equity."""
+        position_value = sum(self.positions[sym] * self.latest_prices[sym] for sym in self.positions)
+        return self.current_cash + position_value
+
     def update_market_price(self, market_event):
         """Updates internal price cache, deducts daily borrow fees, and logs daily equity."""
         for symbol in market_event.data:
@@ -46,8 +51,8 @@ class Portfolio:
             "cash": self.current_cash
         })
 
-    def handle_signal(self, signal: SignalEvent):
-        """Translates strategy signals into market orders."""
+    def handle_signal(self, signal: SignalEvent, hedge_ratio: float = 1.0):
+        """Translates strategy signals into orders sized dynamically by hedge ratio (beta)."""
         stock_a, stock_b = signal.symbol_pair
         price_a = self.latest_prices[stock_a]
         price_b = self.latest_prices[stock_b]
@@ -55,8 +60,10 @@ class Portfolio:
         if price_a == 0 or price_b == 0:
             return
 
-        qty_a = int((self.allocation_per_trade / 2) / price_a)
-        qty_b = int((self.allocation_per_trade / 2) / price_b)
+        # Sizing Leg A based on capital allocation, sizing Leg B using dynamic beta
+        target_val_a = self.allocation_per_trade / 2.0
+        qty_a = max(1, int(target_val_a / price_a))
+        qty_b = max(1, int(qty_a * hedge_ratio))
 
         if signal.signal_type == "SHORT_PAIR":
             self.events_queue.put(OrderEvent(signal.timestamp, stock_a, "SELL", qty_a))
@@ -88,11 +95,6 @@ class Portfolio:
 
         self.total_commissions += fill.commission
         self.total_slippage += fill.slippage
-
-    def total_equity(self) -> float:
-        """Calculates total portfolio equity."""
-        position_value = sum(self.positions[sym] * self.latest_prices[sym] for sym in self.positions)
-        return self.current_cash + position_value
 
     def get_equity_df(self) -> pd.DataFrame:
         """Returns equity history as a DataFrame."""

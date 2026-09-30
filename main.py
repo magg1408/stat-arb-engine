@@ -15,7 +15,7 @@ def run_backtest():
     portfolio = Portfolio(events, initial_capital=100000.0)
     execution = SimulatedExecutionHandler(events)
 
-    print("\n--- Running Stat-Arb Backtest with Transaction Friction ---\n")
+    print("\n--- Running Dynamic OLS Hedge Ratio Stat-Arb Backtest ---\n")
 
     while data_handler.stream_next_bar():
         while not events.empty():
@@ -26,8 +26,8 @@ def run_backtest():
                 strategy.calculate_signals(event)
 
             elif event.type == "SIGNAL":
-                print(f"[{event.timestamp}] SIGNAL: {event.signal_type} | Z: {event.z_score:.2f}")
-                portfolio.handle_signal(event)
+                print(f"[{event.timestamp}] SIGNAL: {event.signal_type} | Z: {event.z_score:.2f} | Beta: {strategy.current_beta:.4f}")
+                portfolio.handle_signal(event, hedge_ratio=strategy.current_beta)
 
             elif event.type == "ORDER":
                 execution.execute_order(event, portfolio.latest_prices)
@@ -50,7 +50,7 @@ def run_backtest():
     print(f"Total Commissions  : ${portfolio.total_commissions:,.2f}")
     print(f"Total Slippage     : ${portfolio.total_slippage:,.2f}")
     print(f"Total Borrow Fees  : ${portfolio.total_borrow_fees:,.2f}")
-    print(f"Gross Friction Impact: ${portfolio.total_commissions + portfolio.total_slippage + portfolio.total_borrow_fees:,.2f}")
+    print(f"Gross Friction     : ${portfolio.total_commissions + portfolio.total_slippage + portfolio.total_borrow_fees:,.2f}")
     print("=================================================================")
 
 if __name__ == "__main__":
