@@ -16,23 +16,29 @@ The core loop strictly enforces event queue boundaries (`MARKET` ➔ `SIGNAL` �
 The modular framework decouples market data streaming, strategy logic, risk management, and order execution through standard FIFO queues:
 
 
-┌──────────────────────┐
-              │ HistoricDataHandler  │
-              └──────────┬───────────┘
-                         │ (MARKET Event)
-                         ▼
-┌─────────────────┐   ┌─────────┐   ┌─────────────────┐
-│ PairsStatArb    ├──►│  Queue  │◄──┤ Portfolio       │
-│ Strategy        │   └────┬────┘   │ Manager         │
-└─────────────────┘        │        └─────────────────┘
-▲ (MARKET)           │ (SIGNAL)        ▲ (FILL Event)
-└────────────────────┼─────────────────┘
-│
-▼ (ORDER Event)
-┌──────────────────────┐
-│ SimulatedExecution   │
-│ Handler              │
-└──────────────────────┘
+## 🛠️ System Architecture
+
+The modular framework decouples market data streaming, strategy logic, risk management, and order execution through standard FIFO queues:
+
+```
+                  ┌──────────────────────┐
+                  │ HistoricDataHandler  │
+                  └──────────┬───────────┘
+                             │ (MARKET Event)
+                             ▼
+  ┌─────────────────┐   ┌─────────┐   ┌─────────────────┐
+  │ PairsStatArb    ├──►│  Queue  │◄──┤ Portfolio       │
+  │ Strategy        │   └────┬────┘   │ Manager         │
+  └─────────────────┘        │        └─────────────────┘
+        ▲ (MARKET)           │ (SIGNAL)        ▲ (FILL Event)
+        └────────────────────┼─────────────────┘
+                             │
+                             ▼ (ORDER Event)
+                  ┌──────────────────────┐
+                  │ SimulatedExecution   │
+                  │ Handler              │
+                  └──────────────────────┘
+```
 
 ### Component Breakdown
 * **`events.py`**: Defines standard event interfaces (`MarketEvent`, `SignalEvent`, `OrderEvent`, `FillEvent`) with robust parameter aliases for multi-module compatibility.
