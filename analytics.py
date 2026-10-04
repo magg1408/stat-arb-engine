@@ -1,46 +1,46 @@
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def calculate_performance_metrics(equity_df: pd.DataFrame) -> dict:
-    returns = equity_df['equity'].pct_change().dropna()
-    
-    total_return = ((equity_df['equity'].iloc[-1] - equity_df['equity'].iloc[0]) / equity_df['equity'].iloc[0]) * 100
-    
-    # Calculate Sharpe Ratio with zero-std protection
-    if len(returns) == 0 or returns.std() == 0:
-        sharpe_ratio = 0.0
+def plot_equity_curve(portfolio_or_df, output_filename="equity_curve.png"):
+    """
+    Plots and saves the portfolio equity curve and drawdown metrics.
+    Accepts either a Portfolio instance or a pandas DataFrame.
+    """
+    # 1. Safely extract DataFrame
+    if hasattr(portfolio_or_df, 'equity_curve'):
+        raw_data = portfolio_or_df.equity_curve
+        equity_df = pd.DataFrame(raw_data) if isinstance(raw_data, list) else raw_data
+    elif isinstance(portfolio_or_df, pd.DataFrame):
+        equity_df = portfolio_or_df
     else:
-        sharpe_ratio = (returns.mean() / returns.std()) * np.sqrt(252)
+        equity_df = pd.DataFrame()
 
-    # Max Drawdown
-    rolling_max = equity_df['equity'].cummax()
-    drawdown = (equity_df['equity'] - rolling_max) / rolling_max
-    max_drawdown = drawdown.min() * 100
+    if equity_df.empty or 'equity' not in equity_df.columns:
+        print("Warning: Equity curve data is empty or missing 'equity' column. Unable to generate plot.")
+        return
 
-    return {
-        "Total Return (%)": total_return,
-        "Sharpe Ratio": sharpe_ratio,
-        "Max Drawdown (%)": max_drawdown
-    }
+    df = equity_df.copy()
 
-def plot_equity_curve(equity_df: pd.DataFrame, filename: str = "equity_curve.png"):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
-    
-    ax1.plot(equity_df.index, equity_df['equity'], label="Statistical Arbitrage Portfolio", color='#1f77b4', linewidth=1.5)
-    ax1.set_title("Pairs Trading Strategy: Cumulative Performance (KO / PEP)")
-    ax1.set_ylabel("Portfolio Value ($)")
-    ax1.legend(loc="upper left")
+    # 2. Compute Drawdown Metrics
+    df['peak'] = df['equity'].cummax()
+    df['drawdown'] = (df['equity'] - df['peak']) / df['peak']
+
+    # 3. Plot Performance
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True, gridspec_kw={'height_ratios': [3, 1]})
+
+    ax1.plot(df.index, df['equity'], label='Statistical Arbitrage Portfolio', color='#1f77b4', linewidth=1.5)
+    ax1.set_title('Pairs Trading Strategy: Cumulative Performance (XOM / CVX)')
+    ax1.set_ylabel('Portfolio Value ($)')
     ax1.grid(True, linestyle='--', alpha=0.5)
+    ax1.legend(loc='upper left')
 
-    rolling_max = equity_df['equity'].cummax()
-    drawdown = (equity_df['equity'] - rolling_max) / rolling_max * 100
-    ax2.fill_between(equity_df.index, drawdown, 0, color='#e74c3c', alpha=0.4, label="Drawdown (%)")
-    ax2.set_ylabel("Drawdown (%)")
-    ax2.set_xlabel("Date")
-    ax2.legend(loc="lower left")
+    ax2.fill_between(df.index, df['drawdown'], 0, color='red', alpha=0.3, label='Drawdown (%)')
+    ax2.set_ylabel('Drawdown (%)')
+    ax2.set_xlabel('Step / Date')
     ax2.grid(True, linestyle='--', alpha=0.5)
+    ax2.legend(loc='lower left')
 
     plt.tight_layout()
-    plt.savefig(filename)
+    plt.savefig(output_filename, dpi=300)
     plt.close()
+    print(f"Successfully generated and saved updated chart to {output_filename}")

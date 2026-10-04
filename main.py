@@ -1,61 +1,45 @@
-from queue import Queue
+import queue
 from data_handler import HistoricDataHandler
 from strategy import PairsStatArbStrategy
 from portfolio import Portfolio
 from execution import SimulatedExecutionHandler
-from analytics import calculate_performance_metrics, plot_equity_curve
+from analytics import plot_equity_curve
 
 def run_backtest():
-    events = Queue()
+    events = queue.Queue()
     
-    # Switch to the top cointegrated pair from screener: XOM / CVX
-    symbol_list = ["XOM", "CVX"]
-    pair = ('XOM', 'CVX')
+    symbols = ['XOM', 'CVX']
+    data_handler = HistoricDataHandler(
+        events_queue=events,
+        symbol_list=symbols,
+        start_date='2023-01-01',
+        end_date='2024-01-01'
+    )
     
-    # Initialize Engine Components
-    data_handler = HistoricDataHandler(events, symbol_list, "2023-01-01", "2024-01-01")
-    strategy = PairsStatArbStrategy(events, pair=pair)
-    portfolio = Portfolio(events, initial_capital=100000.0)
+    strategy = PairsStatArbStrategy(events)
+    portfolio = Portfolio(events)
     execution = SimulatedExecutionHandler(events)
 
-    print(f"\n--- Running Kalman Filter Stat-Arb Backtest on {pair[0]}/{pair[1]} ---\n")
-
+    # Main Event Loop
     while data_handler.stream_next_bar():
         while not events.empty():
             event = events.get()
 
-            if event.type == "MARKET":
+            if event.type == 'MARKET':
                 portfolio.update_market_price(event)
                 strategy.calculate_signals(event)
 
-            elif event.type == "SIGNAL":
-                print(f"[{event.timestamp}] SIGNAL: {event.signal_type} | Z: {event.z_score:.2f} | Beta: {strategy.current_beta:.4f}")
+            elif event.type == 'SIGNAL':
                 portfolio.handle_signal(event, hedge_ratio=strategy.current_beta)
 
-            elif event.type == "ORDER":
+            elif event.type == 'ORDER':
                 execution.execute_order(event, portfolio.latest_prices)
 
-            elif event.type == "FILL":
+            elif event.type == 'FILL':
                 portfolio.update_fill(event)
 
-    # Performance Analysis
-    equity_df = portfolio.get_equity_df()
-    metrics = calculate_performance_metrics(equity_df)
-    plot_equity_curve(equity_df)
-
-    print("\n================ STATISTICAL PERFORMANCE METRICS ================")
-    print(f"Target Pair        : {pair[0]} / {pair[1]}")
-    print(f"Starting Capital   : ${portfolio.initial_capital:,.2f}")
-    print(f"Ending Equity      : ${equity_df['equity'].iloc[-1]:,.2f}")
-    print(f"Total Return       : {metrics['Total Return (%)']:.2f}%")
-    print(f"Sharpe Ratio       : {metrics['Sharpe Ratio']:.2f}")
-    print(f"Max Drawdown       : {metrics['Max Drawdown (%)']:.2f}%")
-    print("---------------- TRANSACTION COST BREAKDOWN ----------------")
-    print(f"Total Commissions  : ${portfolio.total_commissions:,.2f}")
-    print(f"Total Slippage     : ${portfolio.total_slippage:,.2f}")
-    print(f"Total Borrow Fees  : ${portfolio.total_borrow_fees:,.2f}")
-    print(f"Gross Friction     : ${portfolio.total_commissions + portfolio.total_slippage + portfolio.total_borrow_fees:,.2f}")
-    print("=================================================================")
+    # Generate performance chart after backtest completion
+    plot_equity_curve(portfolio)
 
 if __name__ == "__main__":
     run_backtest()
